@@ -1,19 +1,80 @@
 package eval
 
 import (
-	"github.com/apaxa-go/helper/goh/constanth"
-	"github.com/apaxa-go/helper/reflecth"
 	"go/constant"
 	"go/token"
 	"reflect"
+
+	"github.com/apaxa-go/helper/goh/constanth"
+	"github.com/apaxa-go/helper/reflecth"
 )
+
+func getBool(inVal constant.Value) bool {
+	if inVal == nil {
+		return false
+	}
+	refValue := reflect.ValueOf(inVal)
+	if refValue.Kind() == reflect.Ptr {
+		refValue = refValue.Elem()
+	}
+	refType := reflect.TypeOf(inVal)
+	if refType.Kind() == reflect.Ptr {
+		refType = refType.Elem()
+	}
+	switch refType.Kind() {
+	case reflect.Bool:
+		return refValue.Bool()
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint:
+		return refValue.Uint() != 0
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int:
+		return refValue.Int() != 0
+	case reflect.Float32, reflect.Float64:
+		return refValue.Float() != 0
+	case reflect.Complex64, reflect.Complex128:
+		return refValue.Complex() != 0
+	case reflect.String:
+		valueString := refValue.String()
+		if valueString == "" ||
+			valueString == "0" ||
+			valueString == "false" ||
+			valueString == "no" ||
+			valueString == "{}" ||
+			valueString == "[]" {
+			return false
+		}
+		return true
+	}
+
+	return false
+}
 
 func binaryOp(x Data, op token.Token, y Data) (r Data, err *intError) {
 	switch xK, yK := x.Kind(), y.Kind(); {
-	case xK == Nil || yK == Nil || xK == UntypedBool || yK == UntypedBool: // This case needed first to prevent other cases to perform.
+	case xK == UntypedBool && yK == UntypedConst, xK == UntypedConst && yK == UntypedBool:
+		switch {
+		case xK == UntypedBool:
+			if op == token.LAND {
+				r = untypedBoolData(x.UntypedBool() && getBool(y.UntypedConst()))
+			} else {
+				r = untypedBoolData(x.UntypedBool() || getBool(y.UntypedConst()))
+			}
+		default:
+			if op == token.LAND {
+				r = untypedBoolData(y.UntypedBool() && getBool(x.UntypedConst()))
+			} else {
+				r = untypedBoolData(y.UntypedBool() || getBool(x.UntypedConst()))
+			}
+		}
+	case xK == Nil || yK == Nil || ((xK == UntypedBool || yK == UntypedBool) && xK != yK): // This case needed first to prevent other cases to perform.
 		fallthrough
 	default:
 		err = invBinOpTypesInvalError(x, op, y)
+	case xK == UntypedBool && yK == UntypedBool:
+		if op == token.LAND {
+			r = untypedBoolData(x.UntypedBool() && y.UntypedBool())
+		} else {
+			r = untypedBoolData(x.UntypedBool() || y.UntypedBool())
+		}
 	case xK == Regular && yK == Regular, xK == Regular, yK == Regular: // At least one args is regular value
 		// Prepare args
 		var xV, yV reflect.Value

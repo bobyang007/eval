@@ -22,6 +22,9 @@ func indexMap(x reflect.Value, i Data) (r Value, err *intError) {
 	if !rV.IsValid() { // Return zero value if no such key in map
 		return MakeDataRegular(reflect.New(x.Type().Elem()).Elem()), nil
 	}
+	if rV.CanInterface() {
+		return MakeDataRegular(reflect.ValueOf(rV.Interface())), nil
+	}
 
 	return MakeDataRegular(rV), nil
 }
@@ -41,7 +44,11 @@ func indexOther(x reflect.Value, i Data) (r Value, err *intError) {
 		return nil, indexOutOfRangeError(iInt)
 	}
 
-	return MakeDataRegular(x.Index(iInt)), nil
+	indexValue := x.Index(iInt)
+	if indexValue.CanInterface() {
+		return MakeDataRegular(reflect.ValueOf(indexValue.Interface())), nil
+	}
+	return MakeDataRegular(indexValue), nil
 }
 
 func indexConstant(x constant.Value, i Data) (r Value, err *intError) {
